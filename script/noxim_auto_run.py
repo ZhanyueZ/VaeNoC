@@ -1,17 +1,10 @@
 
 import os
 import csv
-traffic_table_base = [
-    [4, 1, 0.01],
-    [4, 5, 0.01],
-    [1, 0, 0.005],
-    [5, 8, 0.005],
-    [0, 3, 0.005],
-    [8, 6, 0.005],
-    [3, 6, 0.005],
-    [6, 7, 0.005]
-]
-num_of_ir = 20
+
+
+NUM_APP = 100
+
 # define the parameter list... The values are all in power.yaml
 buffer_depth_list = [2,4,8,16,32,64]
 flit_size = [16,32,64,128]
@@ -24,18 +17,31 @@ cfg_gen_dir = "/home/kenzoy0426/UT-24Fall/noxim/config_examples/pip_cfg/pip_gen_
 traffic_table_dir = "/home/kenzoy0426/UT-24Fall/noxim/bin/pip_traffic_table"
 sim_result_path = "/home/kenzoy0426/UT-24Fall/noxim/pip_sim_results"
 noxim_bin_path = "/home/kenzoy0426/UT-24Fall/noxim/bin"
+task_graph_dir = "/home/kenzoy0426/UT-24Fall/noc_benchmark/script/LACG"
+mapping_file_path = "/home/kenzoy0426/UT-24Fall/noc_benchmark/script/PIP_LACG_MAP"
 
 cfg_template = os.path.join(cfg_dir,"pip_cfg.yaml")
 tb_template = os.path.join(traffic_table_dir,"pip_traffic_table.txt")
 
-traffic_ratio_list = [(i+1) for i in range(num_of_ir)] #20 total injection rate (injection rate is determined by traffic ratio)
-
-
-def update_tb(file_path,traffic_ratio):
-    with open(file_path,"w") as f:
-        for src,dst,base_rate in traffic_table_base:
-            adjusted_rate = base_rate * traffic_ratio
-            f.write(f"{src} {dst} {adjusted_rate:.6f}\n")
+def gen_traffic_table(task_graph,mapping_file,output_file,traffic_ratio):
+    with open(task_graph, 'r') as f:
+        task_graph = [
+            (int(line.split()[0]), int(line.split()[1]), int(line.split()[2]))
+            for line in f
+        ]
+    with open(mapping_file, 'r') as f:
+        mapping = {
+            int(line.split()[0]): int(line.split()[1])
+            for line in f
+        }
+    replaced_graph = [
+        (mapping[src], mapping[dst], weight/traffic_ratio)
+        for src, dst, weight in task_graph
+    ]
+    with open(output_file, 'w') as f:
+        for src, dst, weight in replaced_graph:
+            f.write(f"{src} {dst} {weight:.4f}\n")
+    
 
 def update_cfg(path,output_path,**kwargs):
     with open(path,'r') as f:
@@ -59,14 +65,13 @@ def update_cfg(path,output_path,**kwargs):
     print(f"Updated configuration saved to: {output_path}")
 
 # with any given traffic table, try all the parameters, generate the cfg, run simulation, get results
-def auto_gen_cfg_and_output(tr):
-    os.system(f"rm -f {cfg_gen_dir}/*")
-    os.system(f"rm -f {sim_result_path}/*")
-    csv_file = os.path.join(sim_result_path,f"sim_results_tr={tr}.csv")
+def auto_gen_cfg_and_output(i):
+    # os.system(f"rm -f {cfg_gen_dir}/*")
+    # os.system(f"rm -f {sim_result_path}/*")
+    csv_file = os.path.join(sim_result_path,f"sim_results_app{i+1}.csv")
     with open(csv_file, mode="w", newline="") as csvfile:
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(["Throughput", "Latency", "Power", "Buffer Depth", "Flit Size", "NUM_VC", "r2h_len","r2r_len"])
-
     os.chdir(noxim_bin_path)
     for buffer_depth in buffer_depth_list:
         for flit in flit_size:
@@ -92,7 +97,17 @@ def auto_gen_cfg_and_output(tr):
                             csv_writer = csv.writer(csvfile)
                             csv_writer.writerow([throughput, average_latency, power,buffer_depth, flit,vc,r2h,r2r])
 
-auto_gen_cfg_and_output(1)
-            
+
+def gen_csv_for_all_app(num_of_app):
+    for i in range(90,100):
+        task_graph_path = os.path.join(task_graph_dir,f"task_graph_{i+1}.txt")
+        traffic_table_path = os.path.join(traffic_table_dir,"pip_traffic_table.txt")
+        gen_traffic_table(task_graph_path,mapping_file_path,traffic_table_path,12800)
+        auto_gen_cfg_and_output(i)
+
+
+gen_csv_for_all_app(NUM_APP)
+
+
 
 
